@@ -1,0 +1,550 @@
+---
+title: "R script for the paper by Pilotto, Rojas & Buckland: Late Holocene anthropogenic landscape change in north-western Europe impacted insect biodiversity as much as climate change did after the last Ice Age"
+author: F. Pilotto
+date: 11th April, 2022
+output: 
+  html_document:
+   toc: true 
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE)
+opts_chunk$set(tidy.opts=list(width.cutoff=50),tidy=T)
+```
+
+___
+
+This document reports the steps to reproduce the results and figures in the manuscript, after the network analysis.
+
+First, we load the R packages. The versions of the used packages and of R are reported at the end of the document. 
+
+```{r load packages, results='hide', message=FALSE, warning=FALSE}
+library(biogeonetworks)
+library(ggplot2)
+library(dplyr)
+library(scales)
+library(gridExtra)
+library(rworldmap)
+library(cowplot)
+library(tidypaleo)
+library(reshape)
+library(indicspecies)
+library(tidyr)
+library(stringr)
+```
+
+# 1. Figure 1 
+
+This section produces Figure 1, showing the spatial and temporal distribution of the samples.
+First we read the network output (in this case the taxonomic network, but it would be the same with the trait network), and we add the info about the age and coordinates of the samples, from the table *LegendSamples*.
+
+```{r Figure 1 preparation, results='hide', message=FALSE, warning=FALSE}
+
+Taxonomy_network <-readInfomapTree("Files/Network_taxonomy_states.tree", network.summary = T, replace.leaf.names = F)
+LegendSamples <- read.table("Files/LegendSamples.csv",h=T, sep=",", quote="\"", fill=FALSE)
+names(LegendSamples)[1] <- "sample_identifier_short"
+Samples_nw <- merge(LegendSamples, Taxonomy_network, by.x="sample_identifier_short",  by.y="Name")
+Samples_nw <- Samples_nw
+
+```
+
+For panel 1A, showing the geographic distribution of the samples, we first obtain the background world map using *getMap()*, and then we create the plot.
+
+```{r Figure 1A, results='hide', message=FALSE, warning=FALSE}
+world2 <- fortify(spTransform(getMap(), 
+                              CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")))
+
+
+# plot:
+Fig1A <- ggplot()+ 
+  geom_map(data=world2, map=world2,
+           aes(x=long, y=lat, map_id=id),
+           fill="grey83", size=0.25)+
+  coord_equal()+ 
+  xlim(c(-12, 23))+ ylim(c(43, 68))+
+  theme_bw()+
+  geom_point(data = Samples_nw,
+    aes(longitude_dd, latitude_dd, col=(-1*Age_BP_From)), 
+    size=2, alpha=1, shape=21) +
+    labs(colour = "Age (yrs BP)") +
+  ylab("Latitude (\u00B0)")+
+  xlab("Longitude (\u00B0)")+
+  scale_colour_continuous(guide="none")+
+  theme( axis.text=element_text(size=7),
+         legend.title = element_text( size=7), legend.text=element_text(size=7),
+         legend.position ="NULL") 
+   
+```
+
+For panel 1B, showing the temporal distribution of the samples, we order the samples by *Age_BP_To* and create the plot. 
+
+```{r Figure 1B, results='hide', message=FALSE, warning=FALSE}
+# order samples by Age_BP_To
+Samples_nw <- Samples_nw[order(Samples_nw$Age_BP_To),]
+
+# plot:
+Fig1B <- ggplot() + 
+  geom_segment(data=Samples_nw, 
+               mapping=aes(x=Age_BP_From, y=c(1:length(Samples_nw$Age_BP_To)),
+                           xend=Age_BP_To, yend=c(1:length(Samples_nw$Age_BP_To)),
+                           col=(-1*Age_BP_From)), size=0.5)+
+  scale_x_reverse(labels = scales::comma, minor_breaks=seq(0,16000, by=1000))+
+  theme_bw()+
+  ylab("Sample")+
+  xlab("Age (yrs BP)")+
+  theme(axis.text=element_text(size=7), legend.title = element_text( size=7),
+        legend.text=element_text(size=7), legend.position = "none")+
+  labs(colour = "Age (yrs BP)") 
+
+```
+
+The combined figure is the following.
+
+```{r figure1, message=FALSE, warning=FALSE, fig.width=6,fig.height=3}
+
+#tiff("Figure1.tif",6,3,units="in",compression="lzw",res=600)  
+plot_grid(Fig1A, Fig1B,
+          labels = c("A", "B"),align = "h", axis = "bt", rel_widths = c(3,1.5))
+#dev.off()
+
+```
+
+FIGURE 1. Geographical and temporal scope of the study: location of the 729 samples at 145 sites (A), the colour of the dots reflects the age ranges of the samples (B).  
+
+
+\newpage
+# 2. Figure 2
+
+Figure 2A shows the results of the network analysis based on the taxonomy and ecological traits. The values used for the plot come from the results of the network analysis (see Supplementary Figure S3). 
+
+```{r Figure 2A, message=FALSE, warning=FALSE}
+
+
+Modules <- read.table("Files/Modules.csv",h=T, sep=",", quote="\"", fill=FALSE)
+names(Modules)[1]<- "Module" #rename first column
+Modules_traits <- Modules[Modules$Network=="Trait",]
+Modules_taxa <- Modules[Modules$Network=="Taxa",]
+
+Fig2A <- ggplot()+
+  scale_x_reverse(breaks=seq(0,16000,  2000),labels =comma)+
+  theme_bw()+
+  theme(panel.background = element_blank(), 
+        panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank())+
+  geom_vline(xintercept=seq( 0, 16000,by=500),colour="grey", linetype="dashed")+
+  geom_vline(xintercept=seq( 0, 16000,by=1000),colour="grey")+
+  ylab("Network")+
+  xlab("Years BP")+
+  ggtitle("A. Modules")+
+  annotate("rect", xmin = Modules_taxa$Yr_from, xmax = Modules_taxa$Yr_to, ymin = 1, ymax = 3,
+           fill=c("darkorange", "blue", "darkorange"), alpha = .4) +
+  # traits
+  annotate("rect", xmin = Modules_traits$Yr_from, xmax = Modules_traits$Yr_to, ymin = 5, ymax = 7,
+         fill=c( "blue", "darkorange", "blue","darkorange", "blue","darkorange", "blue","darkorange"),
+           alpha = .4)  +
+  scale_y_continuous(breaks=c(2,6), labels = c("Taxonomy", "Ecological traits")) +
+  annotate("text", x=c(2000,7000,13000 ), y=c(2), label=Modules_taxa$Name, size=6)+
+  annotate("text", x=c(2000,3600,4300,5500,7000,9000,11000,13000 ), y=6, label=Modules_traits$Name, size=6)+
+  theme( axis.text=element_text(size=12))+
+  coord_flip()
+
+```
+
+```{r show Figure 2A, echo=F, message=FALSE, warning=FALSE}
+Fig2A
+```
+
+FIGURE 2A: Results of the network analysis based on the taxonomy (modules SM1-3) and ecological traits (modules TM1-8).
+
+Figure 2B shows the relative temperature changes based on oxygen isotope data from Greenland ice cores, as an independent proxy of temperature. 
+
+
+```{r Figure 2B, message=FALSE, warning=FALSE}
+Ox <- read.table("Files/D18O GISP2 for SEAD use Age BP (SEAD).csv",h=T, sep=",", quote="\"", fill=FALSE)
+names(Ox) <- c("years.b2k", "d18O", "AgeBP")
+Ox16000 <- Ox[Ox$AgeBP<16000,]
+
+LGM_rect <- tibble(xmin = 16000, xmax = 14670, ymin = -Inf, ymax = Inf) # Lateglacial Max
+LGI_rect <- tibble(xmin = 14670, xmax = 12890, ymin = -Inf, ymax = Inf) # Lateglacial Interstadium
+YD_rect <- tibble(xmin = 12890, xmax = 11700, ymin = -Inf, ymax = Inf) # Younger Dryas
+H_rect <- tibble(xmin = 11700, xmax = 0, ymin = -Inf, ymax = Inf) # Holocene
+
+Fig2B <- ggplot()+
+  geom_rect(mapping = aes(ymin = ymin, ymax = ymax, xmin = xmin, xmax = xmax), 
+            data = LGM_rect, alpha = 0.4, fill = "grey30",inherit.aes = FALSE) +
+  geom_rect(mapping = aes(ymin = ymin, ymax = ymax, xmin = xmin, xmax = xmax), 
+            data = LGI_rect, alpha = 0.4, fill = "grey80",inherit.aes = FALSE)+
+  geom_rect(mapping = aes(ymin = ymin, ymax = ymax, xmin = xmin, xmax = xmax), 
+            data = YD_rect, alpha = 0.4, fill = "grey30",inherit.aes = FALSE)+
+  geom_rect(mapping = aes(ymin = ymin, ymax = ymax, xmin = xmin, xmax = xmax), 
+            data = H_rect, alpha = 0.4, fill = "grey80",inherit.aes = FALSE)+
+  geom_line(data=Ox16000, aes(x=AgeBP, y=d18O), col="black", alpha=1)+
+  scale_x_reverse(breaks=seq(0,16000,  2000),labels =comma)+
+  xlab("")+
+  ylab("d180")+
+  ggtitle("B. Temperature (d180)")+
+  theme_bw()+
+  theme(legend.position = "none", panel.background = element_blank(),panel.grid.major.y = element_blank(),panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),panel.grid.minor.x = element_blank(),
+        axis.text.y = element_blank())+
+  geom_vline(xintercept=seq( 0, 16000,by=500),colour="grey", linetype="dashed")+
+  geom_vline(xintercept=seq( 0, 16000,by=1000),colour="grey")+
+  coord_flip()+
+  annotate("text", x=c(15335, 13780,12295,5850), y=-33, col=1,label=c("LGM", "LGI", "YD","Holocene"),
+           alpha = 1, size=4,angle = 90)+
+  theme( axis.text=element_text(size=12.5))+
+  ylim(-43, -31)
+
+```
+
+
+```{r show Figure 2B, echo=F, message=FALSE, warning=FALSE}
+Fig2B
+```
+FIGURE 2B: Relative temperature changes based on oxygen isotope data from Greenland ice cores, as an independent proxy of temperature. 
+
+2C shows the MCR temperature reconstructions for SM1, SM2 ad SM3. We first read the table with the MCR results for SM1, SM2 ad SM3, as obtained from *BugsCEP*, and then create the plot. 
+
+```{r Figure 2C, message=FALSE, warning=FALSE}
+
+
+MCR_bugs_SpeciesModules<- read.table("Files/MCR_results.csv",h=T, sep=",", quote="\"", fill=FALSE)
+
+
+MCR_bugs_SpeciesModules$Measure <- factor(MCR_bugs_SpeciesModules$Measure, 
+                                          levels=c("TMin", "TMax"), ordered = T)
+
+
+# crate plot:
+Fig2C <- ggplot(data = MCR_bugs_SpeciesModules)+
+  geom_blank(aes(x = -5)) +
+  geom_blank(aes(x = 18))+
+  geom_rect(mapping = aes(ymin = Oldest, ymax = Youngest, xmin = -Inf, xmax = Inf), 
+            data = MCR_bugs_SpeciesModules, alpha = 0.2, fill = c("darkorange","blue",
+                                                                  "darkorange",
+                                                                  "darkorange","blue",
+                                                                  "darkorange"),inherit.aes = FALSE) +
+  geom_hline(yintercept=seq(0, 16000,by=500), colour="grey", linetype="dashed")+
+  geom_hline(yintercept=seq(0, 16000,by=1000), colour="grey")+
+  geom_segment(aes(y = Age, yend = Age, x = Start, xend = End,color=Measure), 
+               size = 20, alpha = 1) +
+  geom_segment(aes(y = Age, yend = Age, x = JackStart, xend = JackEnd,color=Measure), 
+               size = 2, alpha = 1) +
+  scale_color_manual(values = c("TMin" = "darkblue","TMax" = "red"))+
+  ylab("")+
+  xlab("Temperature (°C)")+
+  theme_bw()+
+  theme(legend.position = "none")+
+  ggtitle("C. Temperature (beetles)")+
+  theme(strip.background = element_rect(fill="white",  linetype=NULL))+
+  scale_y_reverse(breaks=seq(0,16000,  2000),labels = comma)+
+  annotate("text", y=c(15000, 8500,500), x=7, col=1,
+           label=c("87% (of 224 species)", "96% (of 159 species)", "97% (of 191 species)"),
+           alpha = 1, size=6,angle = 0)+
+  theme(legend.position = "none", panel.background = element_blank(), 
+        panel.grid.major.x = element_blank(),panel.grid.minor.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text=element_text(size=12))
+        
+```
+```{r show Figure 2C, echo=F, message=FALSE, warning=FALSE}
+Fig2C
+
+#tiff("Figure2A_B_C_v2.tif",10,6,units="in",compression="lzw",res=600)  
+#plot_grid(Fig2A, Fig2B, Fig2C, nrow=1,
+#          align = "h", axis = "bt", rel_widths = c(1, 0.7, 1))
+#dev.off()
+```
+
+FIGURE 2C: Reconstruction of the ranges of mean temperature of the coldest (TMin, blue) and warmest (TMax, red) months, based on the temperature envelopes of the species occurring in the modules SM1-3. Bars show the jackknife ranges. 
+
+
+Figure 2D shows the changes in trait importance for the modules. Trait importance is defined as the amount of flow volume resulting from the network analysis.
+
+First, we load the output of the trait-based network, we convert *layer_id* into *year* BP. 
+
+```{r Figure 2D_1, message=FALSE, warning=FALSE}
+ 
+Trait_network_module <-readInfomapTree("Files/Network_traits_states.tree", network.summary = T, replace.leaf.names = F)
+names(Trait_network_module)<- c("path", "flow", "name", "state_id", "node_id", "layer_id", "lvl1", "lvl2", "lvl3", "lvl4", "lvl5")
+Samples_list_module <- Trait_network_module$name[grep("COUN", Trait_network_module$name)]
+Trait_module <- Trait_network_module[!Trait_network_module$name %in% Samples_list_module,]
+Trait_module <-Trait_module[,c(1:10)]
+# convert "layer" into "year":
+Trait_module$year <- (Trait_module$layer_id*500)-250
+
+```
+
+We compute the relative flow of traits per module (i.e. 500-year bin).
+
+
+```{r Figure 2D modules, message=FALSE, warning=FALSE}
+
+# Total flow:
+TotFlow_module_lvl2 <- Trait_module %>% 
+  group_by(lvl2) %>%  
+  summarise(TotFlowMod = sum(flow))
+Trait_module2_lvl2 <- merge(Trait_module, TotFlow_module_lvl2, by="lvl2")
+
+# compute relative flow of traits per module (i.e. 500-year bin):
+Trait_module3_lvl2 <- Trait_module2_lvl2 %>% 
+  select(lvl2 ,name,flow,TotFlowMod) %>%
+  group_by(lvl2 ,name,TotFlowMod) %>%  
+  summarise(SumFlow = sum(flow))
+Trait_module3_lvl2$RelativeFlow <- Trait_module3_lvl2$SumFlow/Trait_module3_lvl2$TotFlowMod
+
+# compute year
+Modules_year_lvl2<- Trait_module %>% 
+  group_by(lvl2) %>%  
+  summarise(Year_avg = mean(year))
+
+Trait_module4_lvl2 <- merge(Trait_module3_lvl2, Modules_year_lvl2, by="lvl2")
+
+# Order traits:
+Modules <- read.table("Files/Modules.csv",h=T, sep=",", quote="\"", fill=FALSE)
+names(Modules)[1] <- "Module"
+
+Trait_module4_lvl3 <- merge(Trait_module4_lvl2, Modules, by.x="lvl2", by.y="Module")
+Trait_module4_lvl3$name <- factor(Trait_module4_lvl3$name, levels=c("We","Aq","ISt","IRu","Op", "Me","Sa","He","Ha","Wo","ICo","IDe","Dr", "Pa","Di","Ca","Du","IDu","Mo", "St","Ge"), ordered=T)
+
+Fig2D <- ggplot(Trait_module4_lvl3, aes(x = (RelativeFlow*100), y = (Year_avg))) + 
+  facet_geochem_gridh(vars(name)) +
+  theme(legend.position = "none", panel.background = element_blank(),panel.grid.major.y = element_blank(),panel.grid.minor.y =    element_blank())+
+  geom_hline(yintercept=seq( 0, 16000,by=500),colour="grey", linetype="dashed")+
+  geom_hline(yintercept=seq( 0, 16000,by=1000),colour="grey")+
+  labs(x = "Flow (%)", y = "Years BP")+
+  scale_y_reverse(breaks=seq(0,16000,  2000),labels =comma)+
+  geom_rect(mapping = aes(ymin = Yr_from, ymax = Yr_to , xmin = 0, xmax = (RelativeFlow *100), fill = Name), 
+            data = Trait_module4_lvl3 , alpha = 0.6,inherit.aes = FALSE) +
+  scale_fill_manual(values=c("darkorange", "blue","darkorange", "blue","darkorange", "blue","darkorange", "blue"))+
+  #geom_col_segsh(col="grey30",size=1)+
+  #geom_lineh(size=1)+
+  ggtitle("D. Importance of traits for modules")+
+  theme_bw()+
+  theme(axis.text.x = element_text(size = 7,angle =90),
+        strip.background = element_rect(fill="white",  linetype=NULL),
+        legend.position="none",
+        axis.text.y = element_text(size = 12,angle =0)) 
+
+#pdf("Figure2D_new_pdf.pdf",10,6)   #14,10
+#Fig2D
+#dev.off()
+```
+
+Figure 2D:
+
+```{r Figure 2D_4, echo=F, message=FALSE, warning=FALSE}
+Fig2D
+```
+
+FIGURE 2D: Changes in trait importance for the modules, defined as the amount of flow volume resulting from the network analysis; the colours delineate the trait-based modules; note the different scales on the x-axes. See Appendix 1 for a description of the traits.
+
+\newpage
+# 3. Indicator Value analysis
+
+To identify the significant associations between traits and modules, we run an Indicator Value (IndVal) analysis, based on the percent flow per trait per layer. 
+
+First we create a cross table with layer (i.e. 500-year bins) as rows, traits as columns, and *RelativeFlow* as value. Then, we add the module information.
+ 
+```{r IndVal_1, message=FALSE, warning=FALSE}
+# compute total flow per layer (i.e. 500-year bin):
+TotFlow_layer <- Trait_module %>% 
+  group_by(year) %>%  
+  summarise(TotFlowLayer = sum(flow))
+Trait_states2 <- merge(Trait_module, TotFlow_layer, by="year")
+
+# compute relative flow of traits per layer (i.e. 500-year bin):
+Trait_states3 <- Trait_states2 %>% 
+  group_by(lvl2 ,year,name,TotFlowLayer) %>%  
+  summarise(RelativeFlow = sum(flow)/TotFlowLayer)
+
+
+Tr.crossT <- cast(Trait_states3,  year ~ name, value = "RelativeFlow",fill=0)
+year_module <- Trait_states3[, c("year", "lvl2")]
+year_module <- year_module[!duplicated(year_module),]
+Tr.crossT2 <- merge(year_module, Tr.crossT, by="year")
+
+```
+
+We run the IndVal analysis  for the groups of trait-based modules that reflect the species-based modules.
+
+```{r IndVal_groups_TMs, message=FALSE, warning=FALSE}
+# Add labels for groups of modules:
+Tr.crossT2$Module_taxonomy <- ifelse(Tr.crossT2$lvl2 %in% c("2.2","2.1"), "SM1",
+                                              ifelse(Tr.crossT2$lvl2%in% c("2.3","1.3", "1.2","1.5","1.4"), "SM2",
+                                                     ifelse(Tr.crossT2$lvl2 %in% c("1.1"), "SM3", NA)))
+
+# compute IndVal with 999 permutations:
+set.seed(2222) # set.seed for reproducibility of permutation results
+INDVAL_Groups_modules = multipatt(Tr.crossT2[,c(3:23)], Tr.crossT2$Module_taxonomy, duleg =T,control = how(nperm=999))
+
+```
+```{r IndVal_groups_TMs output, message=T, warning=FALSE}
+summary(INDVAL_Groups_modules)
+```
+
+\newpage
+# 4. Supplementary Figure S3
+
+Supplementary Figure S3 shows the temporal and latitudinal distribution of the species-based and trait-based modules, and their robustness.
+We first obtain the latitude of the samples from *LegendSamples*. 
+
+```{r prepare for S3, results='hide', message=FALSE, warning=FALSE}
+
+LegendSamples_lat <- LegendSamples[,c("sample_identifier_short","latitude_dd")]
+LegendSamples_lat <- LegendSamples_lat[!duplicated(LegendSamples_lat),]
+```
+
+We read the taxonomy-based network, we remove the small, non-significant modules and add the latitude information to the samples.
+
+```{r prepare for S3_2, results='hide', message=FALSE, warning=FALSE}
+
+Tax_network <-readInfomapTree("Files/Network_taxonomy_states.tree", network.summary = T, replace.leaf.names = F)
+names(Tax_network)<- c("path", "flow", "name", "state_id", "node_id", "layer_id", "lvl1", "lvl2")
+
+# remove small modules
+summary(factor(Tax_network$lvl1))
+summary(factor(Tax_network$lvl2))
+Tax_network <- Tax_network[Tax_network$lvl1 %in% c(1:3),]
+
+# add latitude samples:
+N_strat_Lat <- merge(Tax_network[,c("name", "layer_id","lvl1","lvl2")],LegendSamples_lat, by.x="name", by.y="sample_identifier_short")
+N_strat_Lat$Module <- paste("M",N_strat_Lat$lvl1, sep="_")
+N_strat_Lat$Module_lvl2 <- paste("M",N_strat_Lat$lvl2, sep="_")
+
+```
+We load the results of the robustness analysis, and compute the number of simulations where Jaccard index is greater than 0.7.
+
+```{r prepare for S3_3, results='hide', message=FALSE, warning=FALSE}
+
+Robust_taxa <- read.table("Files/Robustness_taxonomy.csv",h=T, sep=",", quote="\"", fill=FALSE)
+
+# compute number of simulations where jaccard>0.7
+Robust_taxa1 <- Robust_taxa %>% 
+  group_by(layer_id) %>%  
+  summarize(jac09= length(jaccard[jaccard>0.7])) 
+
+```
+
+We convert *layer_id* into *year* BP, and create the first panel of the plot.
+
+```{r prepare for S3_4, results='hide', message=FALSE, warning=FALSE}
+N_strat_Lat$year <- (N_strat_Lat$layer_id*500)-250
+Robust_taxa1$year <- (Robust_taxa1$layer_id*500)-250
+
+Sup_Fig3A_with_prob <- ggplot()+
+  geom_point(data= N_strat_Lat, aes(x=year, y=latitude_dd, col=Module), size=3)+
+  annotate("rect", xmin = c(9500,3500), xmax = c(10000,4000), ymin = -Inf, ymax = Inf, fill="grey50",
+           alpha = .6)+
+  scale_color_manual(values=alpha(c("darkorange",  "darkorange","blue"), 1)) +
+  theme_bw()+
+  theme(legend.position = "none", panel.background = element_blank(),panel.grid.major.y = element_blank(),panel.grid.minor.y = element_blank())+
+  geom_vline(xintercept=seq( 0, 16000,by=500),colour="grey", linetype="dashed")+
+  geom_vline(xintercept=seq( 0, 16000,by=1000),colour="grey")+
+  scale_x_reverse(breaks=seq(0,16000,  2000),labels =comma)+
+  xlab("Years BP")+
+  ggtitle("A. Taxonomy")+
+  annotate("text", x=c(13000, 7500,2500), y=32, col=1,label=c("SM1", "SM2", "SM3"),
+           alpha = .9, size=4.5, fontface=2)+
+  scale_y_continuous(
+    name = "Latitude (\u00B0)", lim=c(20,85), 
+    sec.axis = sec_axis(~.*1.2, name="Probability (%)")) + 
+  geom_line(data=Robust_taxa1, aes(x=year, y=jac09/1.2))+
+  geom_point(data=Robust_taxa1, aes(x=year, y=jac09/1.2), size=1)
+
+Sup_Fig3A <- ggplot()+
+  geom_point(data= N_strat_Lat, aes(x=year, y=latitude_dd, col=Module), size=3)+
+  annotate("rect", xmin = c(9500,3500), xmax = c(10000,4000), ymin = -Inf, ymax = Inf, fill="grey50",
+           alpha = .6)+
+  scale_color_manual(values=alpha(c("darkorange",  "darkorange","blue"), 1)) +
+  theme_bw()+
+  theme(legend.position = "none", panel.background = element_blank(),panel.grid.major.y = element_blank(),panel.grid.minor.y = element_blank())+
+  geom_vline(xintercept=seq( 0, 16000,by=500),colour="grey", linetype="dashed")+
+  geom_vline(xintercept=seq( 0, 16000,by=1000),colour="grey")+
+  scale_x_reverse(breaks=seq(0,16000,  2000),labels =comma)+
+  xlab("Years BP")+
+  ggtitle("A. Taxonomy")+
+  annotate("text", x=c(13000, 7500,2500), y=45, col=1,label=c("SM1", "SM2", "SM3"),
+           alpha = .9, size=4.5, fontface=2)+
+  scale_y_continuous(
+    name = "Latitude (\u00B0)", lim=c(40,70)) 
+```
+
+We repeat the same procedure as above for the trait-based network. 
+
+```{r prepare for S3_5, results='hide', message=FALSE, warning=FALSE}
+
+Trait_network <-readInfomapTree("Files/Network_traits_states.tree", network.summary = T, replace.leaf.names = F)
+names(Trait_network)<- c("path", "flow", "name", "state_id", "node_id", "layer_id", "lvl1", "lvl2")
+
+SingleTrait_Lat <- merge(Trait_network[,c("name", "layer_id","lvl1","lvl2")],LegendSamples_lat, by.x="name", by.y="sample_identifier_short")
+SingleTrait_Lat$Module <- paste("M",SingleTrait_Lat$lvl2, sep="_")
+SingleTrait_Lat$year <- (SingleTrait_Lat$layer_id*500)-250
+
+# robustness
+Robust_traits <- read.table("Files/Robustness_traits.csv",h=T, sep=",", quote="\"", fill=FALSE)
+
+# compute number of simulations where jaccard>0.7
+Robust_traits1 <- Robust_traits %>% 
+  group_by(layer_id) %>%  
+  summarize(jac09= length(jaccard[jaccard>0.8]))
+# add year
+Robust_traits1$year <-  (Robust_traits1$layer_id*500)-250
+
+#plot
+Sup_Fig3B_with_prob <- ggplot()+
+  geom_point(data=SingleTrait_Lat, aes(x=year, y=latitude_dd, col=Module), size=3) + 
+  scale_color_manual(values=alpha(c("blue","darkorange", "blue","darkorange", "blue","darkorange", "blue","darkorange"), 1)) +
+  theme_bw()+
+  theme(legend.position = "none", panel.background = element_blank(),panel.grid.major.y = element_blank(),panel.grid.minor.y = element_blank())+
+  geom_vline(xintercept=seq( 0, 16000,by=500),colour="grey", linetype="dashed")+
+  geom_vline(xintercept=seq( 0, 16000,by=1000),colour="grey")+
+  scale_x_reverse(breaks=seq(0,16000,  2000),labels =comma)+
+  xlab("Years BP")+
+  ggtitle("B. Ecological traits")+
+  annotate("text", x=c(14000,11000,9000,7500,5500,4200,3500,1500), y=c(rep(32,5),25,32,32), col=1,label=c("TM1", "TM2", "TM3","TM4", "TM5", "TM6", "TM7", "TM8"),
+           alpha = 1, size=4.5, fontface=2)+
+  annotate("segment", x= c(12000, 10000, 8000, 6500, 4500,4000,3500), xend = c(12000, 10000, 8000, 6500, 4500,4000,3500), y=-Inf, yend=Inf, col="grey50", size=1.2, alpha=0.6)+
+  geom_line(data=Robust_traits1, aes(x=year, y=jac09/1.2))+ 
+  geom_point(data=Robust_traits1, aes(x=year, y=jac09/1.2), size=1)+
+  scale_y_continuous(
+    name = "Latitude (\u00B0)",lim=c(20,85), 
+    sec.axis = sec_axis(~.*1.2, name="Probability (%)"))
+
+Sup_Fig3B <- ggplot()+
+  geom_point(data=SingleTrait_Lat, aes(x=year, y=latitude_dd, col=Module), size=3) + 
+  scale_color_manual(values=alpha(c("blue","darkorange", "blue","darkorange", "blue","darkorange", "blue","darkorange"), 1)) +
+  theme_bw()+
+  theme(legend.position = "none", panel.background = element_blank(),panel.grid.major.y = element_blank(),panel.grid.minor.y = element_blank())+
+  geom_vline(xintercept=seq( 0, 16000,by=500),colour="grey", linetype="dashed")+
+  geom_vline(xintercept=seq( 0, 16000,by=1000),colour="grey")+
+  scale_x_reverse(breaks=seq(0,16000,  2000),labels =comma)+
+  xlab("Years BP")+
+  ggtitle("B. Ecological traits")+
+  annotate("text", x=c(14000,11000,9000,7500,5500,4200,3500,1500), y=c(rep(45,5),43,45,45), col=1,label=c("TM1", "TM2", "TM3","TM4", "TM5", "TM6", "TM7", "TM8"),
+           alpha = 1, size=4.5, fontface=2)+
+  annotate("segment", x= c(12000, 10000, 8000, 6500, 4500,4000,3500), xend = c(12000, 10000, 8000, 6500, 4500,4000,3500), y=-Inf, yend=Inf, col="grey50", size=1.2, alpha=0.6)+
+  scale_y_continuous(name = "Latitude (\u00B0)",lim=c(40,70))
+
+```
+
+Figure S3:
+
+```{r Figure S3, message=FALSE, warning=FALSE}
+#tiff("Suppl_Fig3.tif",6,6,units="in",compression="lzw",res=600)   #14,10
+grid.arrange(Sup_Fig3A_with_prob, Sup_Fig3B_with_prob,heights=c(1,1),  ncol=1)
+dev.off()
+
+```
+
+FIGURE S3: Robustness of the modules in the reference solution. For each layer in the reference solution, we measure the proportion of the corresponding layers in all bootstrap partitions showing a jaccard similarity > 0.7. Grey lines indicate layers in the multilayer network. Dots represent samples colored by module affiliation.
+
+___
+
+This analysis uses the following version of R and R packages:
+```{r packages info, echo=F,warning=FALSE}
+version["version.string"]
+installed.packages()[names(sessionInfo()$otherPkgs), "Version"]
+```
