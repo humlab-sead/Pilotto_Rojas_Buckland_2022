@@ -1,0 +1,12 @@
+﻿Module,Yr_from,Yr_to,Name,Network
+1.1,3500,0,TM8,Trait
+1.4,4000,3500,TM7,Trait
+1.5,4500,4000,TM6,Trait
+1.2,6500,4500,TM5,Trait
+1.3,8000,6500,TM4,Trait
+2.3,9500,8000,TM3,Trait
+2.2,12000,9500,TM2,Trait
+2.1,16000,12000,TM1,Trait
+M_2,4000,0,SM3,Taxa
+M_3,10000,3500,SM2,Taxa
+M_1,16000,9500,SM1,Taxa
